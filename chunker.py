@@ -1,9 +1,16 @@
-"""段落分块：按原生段落边界合并，超长段落段内切分，严格保证每块 <= max_chars。"""
+"""段落分块：按原生段落边界合并，超长段落段内切分，严格保证每块 <= max_chars。
+
+强制分块规则：文本中出现连续 3 个及以上减号（即 "---"）时，无条件在该处切分，
+该规则优先级最高，不受段落边界、max_chars 等其他分块条件影响，适用于所有输入内容。
+"""
 import re
 from typing import List, Optional, Tuple
 
 # 句子结束符（中英文），用于超长段落的段内切分
 _SENTENCE_END = "。！？；!?:;…～~"
+
+# 强制分块分隔符：连续 3 个及以上减号（最高优先级，命中即强制切分）
+_FORCE_SEPARATOR = re.compile(r"-{3,}")
 
 
 class EncodingError(Exception):
@@ -66,10 +73,16 @@ def _split_long_paragraph(paragraph: str, max_chars: int) -> List[str]:
     return [c for c in chunks if c.strip()]
 
 
-def chunk_text(text: str, max_chars: int) -> List[str]:
-    """主入口：段落合并 + 超长段落段内切分，返回每块 <= max_chars 的块列表。"""
-    if max_chars < 1:
-        raise ValueError("max_chars 必须 >= 1")
+def split_by_force_separator(text: str) -> List[str]:
+    """按强制分隔符（连续 >=3 个减号）切分文本，分隔符本身作为边界被丢弃。
+
+    该规则优先级最高：只要出现即强制切分，不受段落边界、max_chars 等条件影响。
+    """
+    return _FORCE_SEPARATOR.split(text)
+
+
+def _chunk_segment(text: str, max_chars: int) -> List[str]:
+    """对单一段落段执行原有分块逻辑：段落合并 + 超长段落段内切分。"""
     paragraphs = split_paragraphs(text)
     if not paragraphs:
         return []
@@ -95,3 +108,16 @@ def chunk_text(text: str, max_chars: int) -> List[str]:
         chunks.append(buf)
 
     return [c.strip() for c in chunks if c.strip()]
+
+
+def chunk_text(text: str, max_chars: int) -> List[str]:
+    """主入口：先按强制分隔符（---）无条件切段，再对每段执行原有分块逻辑。
+
+    返回每块 <= max_chars 的块列表；强制分隔符命中处的切分优先级最高。
+    """
+    if max_chars < 1:
+        raise ValueError("max_chars 必须 >= 1")
+    chunks: List[str] = []
+    for segment in split_by_force_separator(text):
+        chunks.extend(_chunk_segment(segment, max_chars))
+    return chunks

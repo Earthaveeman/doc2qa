@@ -8,3 +8,4 @@ __pycache__/
 
 # IDE 内部文件
 .trae/
+/.idea/
