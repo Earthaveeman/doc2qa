@@ -66,8 +66,10 @@ def validate_result(text: str) -> List[dict]:
 
 
 class BailianClient:
-    def __init__(self, config):
+    def __init__(self, config, app_id: Optional[str] = None):
         self.config = config
+        # app_id 可覆盖：语义增强流程传入独立应用 ID，默认沿用主应用
+        self.app_id = app_id or config.app_id
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -75,6 +77,10 @@ class BailianClient:
                 "Content-Type": "application/json",
             }
         )
+
+    @property
+    def endpoint(self) -> str:
+        return self.config.endpoint_template.replace("{app_id}", self.app_id)
 
     def call(
         self,
@@ -88,7 +94,7 @@ class BailianClient:
         重试耗尽抛 BailianCallError。
         on_retry(第几次, 共几次, 原因) 用于控制台提示。
         """
-        url = self.config.endpoint
+        url = self.endpoint
         body = {"input": {"prompt": prompt}}
         max_retries = self.config.max_retries
         attempt = 0

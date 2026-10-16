@@ -4,6 +4,8 @@
 
 递归扫描指定目录下的文本文件，按原生段落边界分块（每块 ≤2000 字符），逐块调用阿里云百炼智能体，将返回的 JSONL 结果按处理顺序写入与原文件同名的 `.jsonl` 输出文件。适用于"文档转问答对（doc → QA）"类的批量数据生产场景。
 
+另提供**语义增强模式**（`--enhance`）：读取上一轮生成的问答对 JSONL，逐条调用百炼语义增强应用（独立 appid），每条产出 5 个增强问答对，拼接写入 `<原文件名>_fivefold.jsonl`。
+
 ## 功能特性
 
 - **段落分块**：按空行识别原生段落边界；连续短段落自动合并，单块严格不超过 2000 字符；超长段落自动在段内按句子边界切分（无句读时按固定长度硬切兜底）
@@ -29,10 +31,17 @@ pip install -r requirements.txt
 cp .env.example .env
 
 # 3. 运行
-python main.py --input ./你的文本目录
+python main.py --generate --input ./你的文本目录
 ```
 
-不带 `--input` 参数时，使用 `.env` 中 `INPUT_DIR` 指定的目录。
+不带 `--input` 参数时，使用 `.env` 中 `INPUT_DIR` 指定的目录；不带任何参数运行时打印帮助信息并退出。
+
+语义增强模式：
+
+```bash
+python main.py --enhance ./input/qa.jsonl   # 指定输入文件
+python main.py --enhance                    # 使用 .env 中 ENHANCE_INPUT
+```
 
 ## 配置说明（.env）
 
@@ -47,6 +56,8 @@ python main.py --input ./你的文本目录
 | `CHUNK_MAX_CHARS` | 块最大字符数 | `2000` |
 | `INPUT_DIR` | 默认输入目录 | `./input` |
 | `TEXT_EXTENSIONS` | 处理的扩展名（逗号分隔） | `.txt,.md` |
+| `ENHANCE_APP_ID` | 语义增强应用 ID（`--enhance` 模式必填） | — |
+| `ENHANCE_INPUT` | 语义增强默认输入 JSONL 文件 | — |
 
 ## 处理流程
 
@@ -60,6 +71,18 @@ python main.py --input ./你的文本目录
 ```
 
 运行结束时输出汇总：成功 / 跳过 / 空文件 / 失败数量及失败文件清单；详细日志写入 `logs/run_时间戳.log`。
+
+### 语义增强流程（--enhance）
+
+```
+读取问答对 JSONL 文件（UTF-8 优先，GBK 回退）
+  └─ 逐行解析 JSON 对象（非法行跳过计数）
+      └─ 逐条调用百炼语义增强应用（传入当前 JSON，异常重试）
+          └─ 返回 JSONL（每条预期 5 行）按原有逻辑逐行校验
+              └─ 按顺序拼接，原子写入 <原文件名>_fivefold.jsonl
+```
+
+单条解析失败或调用重试耗尽仅跳过该条，不中断整体流程；结束时输出 成功 / 失败 条数统计与失败清单，详细日志同样写入 `logs/`。该流程与原有流程通过 `--enhance` 参数完全隔离，互不影响。
 
 ## 输出格式
 
@@ -76,9 +99,10 @@ python main.py --input ./你的文本目录
 
 ```
 doc2qa/
-├── main.py          # CLI 入口 + 批量处理编排
+├── main.py          # CLI 入口 + 批量处理编排（--enhance 分流语义增强流程）
 ├── config.py        # .env 配置加载与校验
 ├── chunker.py       # 段落分块逻辑
+├── enhance.py       # 语义增强流程（问答对 JSONL → fivefold 增强）
 ├── bailian.py       # 百炼智能体调用客户端（重试/超时/JSONL 校验）
 ├── .env.example     # 配置模板（复制为 .env 使用）
 ├── requirements.txt # 依赖清单

@@ -1,8 +1,13 @@
 """doc2qa 入口：批量扫描文本文件 -> 段落分块 -> 逐块调用百炼智能体 -> 原子写入同名 .jsonl。
 
+语义增强模式（--enhance）：读取问答对 JSONL -> 逐条调用百炼语义增强应用 -> 结果写入 *_fivefold.jsonl。
+
 用法:
-    python main.py                    # 使用 .env 中的 INPUT_DIR
-    python main.py --input ./docs     # 覆盖输入目录
+    python main.py                    # 无参数：打印帮助信息并退出
+    python main.py --generate         # 原有流程，使用 .env 中的 INPUT_DIR
+    python main.py --generate --input ./docs   # 原有流程，覆盖输入目录
+    python main.py --enhance ./qa.jsonl   # 语义增强流程，指定输入文件
+    python main.py --enhance              # 语义增强流程，使用 .env 的 ENHANCE_INPUT
 """
 import argparse
 import json
@@ -16,6 +21,7 @@ from typing import List
 from bailian import BailianCallError, BailianClient
 from chunker import EncodingError, chunk_text, read_text_file
 from config import ConfigError, load_config
+from enhance import run_enhance
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
@@ -47,6 +53,12 @@ def setup_logging() -> str:
         ],
         force=True,
     )
+    # Windows GBK 控制台兼容：无法编码的字符替换显示，避免 ✓/✗ 等符号导致崩溃
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     return log_file
 
 
@@ -121,12 +133,79 @@ def process_file(path: str, rel_path: str, client: BailianClient,
     return FileResult("ok", rel_path, f"{len(chunks)} 块 {len(all_lines)} 行 → {rel_out}")
 
 
+def _make_console():
+    def console(msg: str) -> None:
+        print(msg, flush=True)
+        logging.info("%s", msg.rstrip())
+    return console
+
+
+def run_enhance_mode(enhance_arg: str) -> int:
+    """语义增强流程入口：与原有流程完全隔离。"""
+    try:
+        config = load_config(require_main_app=False)
+    except ConfigError as e:
+        print(f"[配置错误] {e}", file=sys.stderr)
+        return 2
+
+    if not config.enhance_app_id:
+        print("[配置错误] 语义增强模式缺少必填配置: ENHANCE_APP_ID", file=sys.stderr)
+        return 2
+
+    input_path = enhance_arg or config.enhance_input
+    if not input_path:
+        print("[配置错误] 未指定输入文件：请通过 --enhance 传入，或在 .env 中配置 ENHANCE_INPUT",
+              file=sys.stderr)
+        return 2
+    input_path = os.path.abspath(input_path)
+    if not os.path.isfile(input_path):
+        print(f"[错误] 输入文件不存在: {input_path}", file=sys.stderr)
+        return 2
+
+    setup_logging()
+    console = _make_console()
+
+    # 独立应用 ID：复用同一 API Key 与请求/重试/校验逻辑，仅指向语义增强应用
+    client = BailianClient(config, app_id=config.enhance_app_id)
+    console(f"语义增强模式: 输入 {input_path}（应用 ID: {config.enhance_app_id}）")
+    return run_enhance(input_path, client, console)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        description="批量文本分块并调用阿里云百炼智能体，结果写入同名 .jsonl"
+        description="批量文本分块并调用阿里云百炼智能体，结果写入同名 .jsonl；"
+                    "--enhance 进入语义增强流程",
+        epilog="示例:\n"
+               "  python main.py --generate --input ./docs   # 原有流程：分块产问答对\n"
+               "  python main.py --generate                 # 原有流程：使用 .env 的 INPUT_DIR\n"
+               "  python main.py --enhance ./qa.jsonl       # 语义增强：指定输入文件\n"
+               "  python main.py --enhance                  # 语义增强：使用 .env 的 ENHANCE_INPUT",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--input", help="输入目录（默认取 .env 的 INPUT_DIR）")
+    parser.add_argument(
+        "--generate",
+        action="store_true",
+        help="执行原有流程：批量扫描文本文件 -> 分块 -> 调用百炼智能体 -> 写入同名 .jsonl",
+    )
+    parser.add_argument("--input", help="原有流程的输入目录（默认取 .env 的 INPUT_DIR）")
+    parser.add_argument(
+        "--enhance",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="FILE",
+        help="语义增强模式：传入问答对 JSONL 文件路径（省略时取 .env 的 ENHANCE_INPUT）",
+    )
     args = parser.parse_args(argv)
+
+    # 参数分流：未传任何模式参数时打印帮助并退出
+    if args.enhance is None and not args.generate:
+        parser.print_help()
+        print("\n[提示] 请至少指定一种执行模式：--generate（原有流程）或 --enhance（语义增强流程）")
+        return 2
+
+    if args.enhance is not None:
+        return run_enhance_mode(args.enhance)
 
     try:
         config = load_config()

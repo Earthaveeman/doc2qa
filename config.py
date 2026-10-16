@@ -27,6 +27,9 @@ class Config:
     chunk_max_chars: int
     input_dir: str
     text_extensions: List[str] = field(default_factory=list)
+    # 语义增强模式配置（仅 --enhance 流程使用）
+    enhance_app_id: str = ""
+    enhance_input: str = ""
 
     @property
     def endpoint(self) -> str:
@@ -63,12 +66,19 @@ def _get_float(name: str, default: float, minimum: float = 0) -> float:
     return value
 
 
-def load_config() -> Config:
-    """加载并校验配置。必填项缺失时抛 ConfigError。"""
+def load_config(require_main_app: bool = True) -> Config:
+    """加载并校验配置。必填项缺失时抛 ConfigError。
+
+    require_main_app=False 供语义增强模式使用：此时不要求 BAILIAN_APP_ID，
+    改为要求 ENHANCE_APP_ID（由调用方校验）。
+    """
     app_id = os.getenv("BAILIAN_APP_ID", "").strip()
     api_key = os.getenv("BAILIAN_API_KEY", "").strip()
-    if not app_id or not api_key:
+    if require_main_app:
         missing = [n for n, v in (("BAILIAN_APP_ID", app_id), ("BAILIAN_API_KEY", api_key)) if not v]
+    else:
+        missing = [n for n, v in (("BAILIAN_API_KEY", api_key),) if not v]
+    if missing:
         raise ConfigError(
             "缺少必填配置: " + ", ".join(missing)
             + "。请复制 .env.example 为 .env 并填写真实凭证。"
@@ -95,4 +105,6 @@ def load_config() -> Config:
         chunk_max_chars=_get_int("CHUNK_MAX_CHARS", 2000),
         input_dir=os.getenv("INPUT_DIR", "./input").strip(),
         text_extensions=extensions,
+        enhance_app_id=os.getenv("ENHANCE_APP_ID", "").strip(),
+        enhance_input=os.getenv("ENHANCE_INPUT", "").strip(),
     )
