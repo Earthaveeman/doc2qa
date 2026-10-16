@@ -1,6 +1,6 @@
 """语义增强流程：读取问答对 JSONL -> 逐条调用百炼语义增强应用 -> 校验拼接 -> 输出 fivefold 文件。
 
-与原有"文本分块产问答"流程完全隔离，仅由 main.py --enhance 参数进入。
+与"问答对生成流程"（文本分块产问答对）完全隔离，仅由 main.py --enhance 参数进入。
 """
 import json
 import logging
@@ -102,7 +102,7 @@ def run_enhance(input_path: str, client: BailianClient,
             logger.error("第 %d 条调用失败: %s", idx, e)
             continue
 
-        # 3) 结果已在 client.call 内按原有逻辑校验（合法 JSONL 且含 prompt/response）
+        # 3) 结果已在 client.call 内按统一的 JSONL 校验规则校验（合法 JSONL 且含 prompt/response）
         if len(results) != EXPECTED_LINES:
             logger.warning("第 %d 条返回 %d 行（预期 %d）", idx, len(results), EXPECTED_LINES)
             console(f"    第 {idx} 条返回 {len(results)} 行（预期 {EXPECTED_LINES}）")

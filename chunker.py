@@ -82,7 +82,7 @@ def split_by_force_separator(text: str) -> List[str]:
 
 
 def _chunk_segment(text: str, max_chars: int) -> List[str]:
-    """对单一段落段执行原有分块逻辑：段落合并 + 超长段落段内切分。"""
+    """对单一段落段执行基础分块逻辑：段落合并 + 超长段落段内切分。"""
     paragraphs = split_paragraphs(text)
     if not paragraphs:
         return []
@@ -111,7 +111,7 @@ def _chunk_segment(text: str, max_chars: int) -> List[str]:
 
 
 def chunk_text(text: str, max_chars: int) -> List[str]:
-    """主入口：先按强制分隔符（---）无条件切段，再对每段执行原有分块逻辑。
+    """主入口：先按强制分隔符（---）无条件切段，再对每段执行基础分块逻辑。
 
     返回每块 <= max_chars 的块列表；强制分隔符命中处的切分优先级最高。
     """

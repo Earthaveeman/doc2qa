@@ -4,8 +4,8 @@
 
 用法:
     python main.py                    # 无参数：打印帮助信息并退出
-    python main.py --generate         # 原有流程，使用 .env 中的 INPUT_DIR
-    python main.py --generate --input ./docs   # 原有流程，覆盖输入目录
+    python main.py --generate         # 问答对生成流程，使用 .env 中的 INPUT_DIR
+    python main.py --generate --input ./docs   # 问答对生成流程，覆盖输入目录
     python main.py --enhance ./qa.jsonl   # 语义增强流程，指定输入文件
     python main.py --enhance              # 语义增强流程，使用 .env 的 ENHANCE_INPUT
 """
@@ -141,7 +141,7 @@ def _make_console():
 
 
 def run_enhance_mode(enhance_arg: str) -> int:
-    """语义增强流程入口：与原有流程完全隔离。"""
+    """语义增强流程入口：与问答对生成流程完全隔离。"""
     try:
         config = load_config(require_main_app=False)
     except ConfigError as e:
@@ -176,18 +176,18 @@ def main(argv=None) -> int:
         description="批量文本分块并调用阿里云百炼智能体，结果写入同名 .jsonl；"
                     "--enhance 进入语义增强流程",
         epilog="示例:\n"
-               "  python main.py --generate --input ./docs   # 原有流程：分块产问答对\n"
-               "  python main.py --generate                 # 原有流程：使用 .env 的 INPUT_DIR\n"
-               "  python main.py --enhance ./qa.jsonl       # 语义增强：指定输入文件\n"
-               "  python main.py --enhance                  # 语义增强：使用 .env 的 ENHANCE_INPUT",
+               "  python main.py --generate --input ./docs   # 问答对生成流程：分块产问答对\n"
+               "  python main.py --generate                 # 问答对生成流程：使用 .env 的 INPUT_DIR\n"
+               "  python main.py --enhance ./qa.jsonl       # 语义增强流程：指定输入文件\n"
+               "  python main.py --enhance                  # 语义增强流程：使用 .env 的 ENHANCE_INPUT",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--generate",
         action="store_true",
-        help="执行原有流程：批量扫描文本文件 -> 分块 -> 调用百炼智能体 -> 写入同名 .jsonl",
+        help="问答对生成流程：批量扫描文本文件 -> 段落分块 -> 调用百炼智能体 -> 问答对写入同名 .jsonl",
     )
-    parser.add_argument("--input", help="原有流程的输入目录（默认取 .env 的 INPUT_DIR）")
+    parser.add_argument("--input", help="问答对生成流程的输入目录（默认取 .env 的 INPUT_DIR）")
     parser.add_argument(
         "--enhance",
         nargs="?",
@@ -201,7 +201,7 @@ def main(argv=None) -> int:
     # 参数分流：未传任何模式参数时打印帮助并退出
     if args.enhance is None and not args.generate:
         parser.print_help()
-        print("\n[提示] 请至少指定一种执行模式：--generate（原有流程）或 --enhance（语义增强流程）")
+        print("\n[提示] 请至少指定一种执行模式：--generate（问答对生成流程）或 --enhance（语义增强流程）")
         return 2
 
     if args.enhance is not None:
